@@ -64,8 +64,8 @@ class BTB_Struct {
 		}
 	}
 
- 	~BTB_Struct() {
-		 //need to complete 
+ 	virtual ~BTB_Struct() {
+         delete[] BTB_pointer;
  	}
 
 
@@ -252,6 +252,10 @@ public:
 			}
 	}
 
+    ~LH_LT () {
+        for (int i = 0; i < btbSize; i++) {
+            delete [] LH_LT::BTB_pointer[i].FSM_poiner;
+    }
 
 
 
@@ -283,6 +287,10 @@ class LH_GT : public BTB_Struct {
 			// LH already initialized
 	}
     
+    ~LH_GT () {
+         delete GlobalFSMTable;
+    }
+
 
 	unsigned& get_history(BTB_data *entry) override {
 		return entry->history_LH;
@@ -313,6 +321,11 @@ class GH_LT : public BTB_Struct {
 			}
 	}
 
+    ~GH_LT () {
+        for (int i = 0; i < btbSize; i++) {
+            delete [] GH_LT::BTB_pointer[i].FSM_poiner;
+    }
+
 	unsigned& get_history(BTB_data *entry) override {
 		return GlobalHistory;
 	} 
@@ -339,6 +352,10 @@ class GH_GT : public BTB_Struct {
 			MEMSET(GlobalFSMTable, FsmDefault, 1<<historySizeBits);
 			GH_GT::is_share = is_share;
 	}
+
+    ~GH_GT () {
+         delete GlobalFSMTable;
+    }
 
 	unsigned& get_history(BTB_data *entry) override {
 		return GlobalHistory;	
