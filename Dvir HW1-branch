@@ -160,9 +160,9 @@ class BTB_Struct {
 
 
 	// use in prediction, not update
-	virtual unsigned& get_history(BTB_data *entry); // return GlobalHistory  or entry->history_LH	
-	virtual int* get_state_array(BTB_data *entry);  // return GlobalFSMTable or entry->FSM_poiner
-	virtual int* local_fsm_array_create();          // return new int[1<<historySizeBits](FsmDefault) or nullptr if using GlobalFSMTable
+	virtual unsigned& get_history(BTB_data *entry){}; // return GlobalHistory  or entry->history_LH	
+	virtual int* get_state_array(BTB_data *entry){};  // return GlobalFSMTable or entry->FSM_poiner
+	virtual int* local_fsm_array_create(){};          // return new int[1<<historySizeBits](FsmDefault) or nullptr if using GlobalFSMTable
 //	virtual int run_share(unsigned history, uint32_t pc); // if lshare or gshare, xor history with some pc bits TODO understand which bits (different for l&g)
 //  int run_share(unsigned history, uint32_t pc, int is_share, unsigned historySizeBits); 
 
@@ -223,13 +223,13 @@ uint32_t run_share(unsigned history, uint32_t pc, int is_share ){
         index=value_index & mask;//change the reference variable-index from the pc
        
         mask=0;
-        value_index=0;
+        value_index=pc;
         while (tagNumBits>0){
             mask=mask<<1;//shift left
             mask++;
             tagNumBits--;
         }
-        tag=value_index>>offsetTag; // see ZZZZZZZZZZ YYYY 00  in the pdf
+        tag=(value_index>>offsetTag); // see ZZZZZZZZZZ YYYY 00  in the pdf
         tag=value_index & mask;
     }
 
