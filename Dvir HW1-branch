@@ -57,7 +57,7 @@ class BTB_Struct {
 		num_of_updates=0;
 		num_of_fails=0;
 
-		for (int i =0 ; i < BTB_sizeLines; i++) { 
+		for (unsigned int i =0 ; i < BTB_sizeLines; i++) { 
 			BTB_pointer[i].history_LH=0;
 			BTB_pointer[i].tag=0;
 			BTB_pointer[i].valid=0;
@@ -117,7 +117,7 @@ class BTB_Struct {
 		unsigned history = get_history(entry);
 		int *state_array = get_state_array(entry);
 		int state = state_array[run_share(history, pc, share)];
-		printf("state,history is:%d,%u\n", state, history);
+		//printf("state,history,tag is:%d,%u,%d\n", state, history, entry && (entry->tag) );
 
 		if (state >= 2) {
 			*dst = entry->jumpLabeL;
@@ -147,7 +147,7 @@ class BTB_Struct {
 			state--;
 
 		// history
-		history = (history<<1) & ((1<<historySizeBits)-1) | (taken?1:0); // shift left, mask only the relevant length to remove oldest event, add the recent event 
+		history = ((history<<1) & ((1<<historySizeBits)-1)) | (taken?1:0); // shift left, mask only the relevant length to remove oldest event, add the recent event 
 
 		// target
 		entry->jumpLabeL = targetPc;
@@ -207,10 +207,11 @@ uint32_t run_share(unsigned history, uint32_t pc, int is_share ){
 * @brief extract tag and index from pc  *tagNumBits=numb of tag bits 0...
 */
     void get_tag_n_index(uint32_t pc, unsigned &tag, int &index){ // does not check existance, only translating the bits TODO implement (pc=pc>>2; )
-        uint32_t value_index=0;
+        int value_index=0;
         int offsetTag=0;
         int mask=0;
         int numb_bit_table;
+		int tagNumBitsHelp;
 
         numb_bit_table=log2(BTB_sizeLines);
         offsetTag=numb_bit_table+2;//how much offset we need to do to the pc-to extract tag
@@ -224,13 +225,15 @@ uint32_t run_share(unsigned history, uint32_t pc, int is_share ){
         index=value_index & mask;//change the reference variable-index from the pc
        
         mask=0;
+		tagNumBitsHelp=tagNumBits;
         value_index=pc;
-        while (tagNumBits>0){
+        while (tagNumBitsHelp>0){
             mask=mask<<1;//shift left
             mask++;
-            tagNumBits--;
+            tagNumBitsHelp--;
         }
         value_index=(value_index>>offsetTag); // see ZZZZZZZZZZ YYYY 00  in the pdf
+		//printf("value_index,mask are: %d,%d\n" ,value_index,mask);
         tag=value_index & mask;
     }
 
@@ -255,9 +258,9 @@ public:
 	LH_LT(unsigned btbSize, unsigned historySize, unsigned tagSize, unsigned fsmState,int is_share)
 		:BTB_Struct(btbSize, historySize, tagSize, fsmState,is_share){
 			unsigned FSM_num=pow(2,historySize);
-			for (int i = 0; i < btbSize; i++) {
+			for (unsigned int i = 0; i < btbSize; i++) {
 				LH_LT::BTB_pointer[i].FSM_poiner = new int[FSM_num];//define local state for each line in the BTB,not sure if its work!
-				for (int j = 0; j < FSM_num ; j++) { // reset the FSM table
+				for (unsigned int j = 0; j < FSM_num ; j++) { // reset the FSM table
 					LH_LT::BTB_pointer[i].FSM_poiner[j] = fsmState;
 				}
 			}
@@ -265,7 +268,7 @@ public:
 
 	
     ~LH_LT () {
-        for (int i = 0; i < BTB_sizeLines; i++) {
+        for ( unsigned int i = 0; i < BTB_sizeLines; i++) {
             delete [] LH_LT::BTB_pointer[i].FSM_poiner;
     	}
 	}
@@ -323,16 +326,16 @@ class GH_LT : public BTB_Struct {
 	GH_LT(unsigned btbSize, unsigned historySize, unsigned tagSize, unsigned fsmState, int is_share)
 		:BTB_Struct(btbSize, historySize, tagSize, fsmState,is_share){
 			unsigned FSM_num=pow(2,historySize);
-			for (int i = 0; i < btbSize; i++) {
+			for (unsigned int i = 0; i < btbSize; i++) {
 				GH_LT::BTB_pointer[i].FSM_poiner = new int[FSM_num];//define local state for each line in the BTB,not sure if its work!
-				for (int j = 0; j < FSM_num ; j++) { // reset the FSM table
+				for (unsigned int j = 0; j < FSM_num ; j++) { // reset the FSM table
 					GH_LT::BTB_pointer[i].FSM_poiner[j] = fsmState;
 				}
 			}
 	}
 
 	~GH_LT () {
-        for (int i = 0; i < BTB_sizeLines; i++) {
+        for (unsigned int i = 0; i < BTB_sizeLines; i++) {
             delete [] GH_LT::BTB_pointer[i].FSM_poiner;
 		}
     }
@@ -445,9 +448,9 @@ void BP_GetStats(SIM_stats *curStats){
 	int hist = init_bp_struct->historySizeBits;
 	int btb = init_bp_struct->BTB_sizeLines;
 
-	int history_total = hist * ((LG|LL) ? (1<<btb) : 1);
-	int btb_total = (1+tag) * (1<<btb); // 1 for valid bit
-	int state_total = 2 * (1<<hist) * ((GL|LL) ? (1<<btb) : 1);
+	int history_total = hist * ((LG|LL) ? btb : 1);
+	int btb_total = (1+tag+30) * btb; // 1 for valid bit 32-2 for target_pc
+	int state_total = 2 * (1<<hist) * ((GL|LL) ? btb : 1);
 	curStats->size = history_total+btb_total+state_total;
 
 	delete init_bp_struct; // call destructor
