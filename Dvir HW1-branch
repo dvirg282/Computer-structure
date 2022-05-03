@@ -117,6 +117,7 @@ class BTB_Struct {
 		unsigned history = get_history(entry);
 		int *state_array = get_state_array(entry);
 		int state = state_array[run_share(history, pc, share)];
+		printf("state,history is:%d,%u\n", state, history);
 
 		if (state >= 2) {
 			*dst = entry->jumpLabeL;
@@ -229,7 +230,7 @@ uint32_t run_share(unsigned history, uint32_t pc, int is_share ){
             mask++;
             tagNumBits--;
         }
-        tag=(value_index>>offsetTag); // see ZZZZZZZZZZ YYYY 00  in the pdf
+        value_index=(value_index>>offsetTag); // see ZZZZZZZZZZ YYYY 00  in the pdf
         tag=value_index & mask;
     }
 
