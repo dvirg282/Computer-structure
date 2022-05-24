@@ -1,0 +1,383 @@
+
+#include <cstdlib>
+#include <iostream>
+#include <fstream>
+#include <sstream>
+#include <math.h>
+#include <stdio.h>
+#include <stdlib.h>
+
+
+using std::FILE;
+using std::string;
+using std::cout;
+using std::endl;
+using std::cerr;
+using std::ifstream;
+using std::stringstream;
+using namespace std;
+
+bool write_through;  // TODO set in main()
+bool write_allocate;
+unsigned total_time;
+int block_num_bit;
+
+//brief-define each block in n-ways array
+typedef struct Address_Data  {
+	unsigned LRU;
+	unsigned tag;
+	bool valid=0;
+	bool dirty=0;
+}Address_Data;
+
+//brief-define n-ways arrays in L1/L2
+typedef struct N_ways_sets {
+	unsigned num_address_in_Mem=0; // num_of_ways 
+	Address_Data* Address_array_same_set; 
+}N_ways_sets;
+
+//brief- define the L1 & L2 data structure - both with same type
+typedef struct L{
+	int num_of_sets;
+	N_ways_sets* Sets_array; //=new N_ways_sets[num_set_L1]; //initialize array of sets. 
+	int num_miss_L1=0;
+	int num_hit_L2=0;
+	struct L *lower_level=nullptr;  // if null, RAM
+	int lower_access_cycles;//
+	int access_cycles;//num of cycle 
+
+}L_Cache;
+
+unsigned total_time=0;
+unsigned L1_set;
+unsigned L2_set;
+unsigned L1_tag;
+unsigned L2_tag;
+
+int helper=0;//for read function
+
+
+
+///////////////////////////////////////////functions:///////////////////////////////////////////////////////////////////////////////////
+
+	L_Cache *cache_init(int num_of_sets, int num_of_ways) {
+		L_Cache *cache = new L_Cache();
+		cache->num_of_sets = num_of_sets; 
+		cache->Sets_array = new N_ways_sets[num_of_sets]();
+		for (int set=0; set<num_of_sets; set++) {
+			N_ways_sets *n_ways = cache->Sets_array + set;
+			n_ways->num_address_in_Mem = num_of_ways;
+			n_ways->Address_array_same_set = new Address_Data[num_of_ways]();
+			// ^ TODO set to zero
+		}
+		return cache;
+	}
+
+
+
+	int cache_read(L_Cache* L, &helper) { 
+		add_access(L->access_cycles);
+		int way;
+		// access of L1.
+		if(!helper){
+			bool a=n_way_search(&(L->Sets_array[L1_set]),L1_tag,way);//search in L1	
+			if(a){//we are in same set && same tag.
+				_n_way_raise_lru(&(L->Sets_array[L1_set]),way);//make sure with yoav its update the found tag to be the last one
+				return 0;
+			}
+			helper=1;//not found in L1 so we insert the new address inside the set!
+			L->num_miss_L1+=1;
+			way=get_oldest_way(L->Sets_array +L1_set);
+			clear_way(L, set,way);
+			L->Sets_array[L1_set].Address_array_same_set[way].valid=true;
+			L->Sets_array[L1_set].Address_array_same_set[way].tag=L1_tag;
+			_n_way_raise_lru(&(L->Sets_array[L1_set]),way);
+			}
+			cache_read(&(L->lower_level),helper);//calling to L2 read
+
+		//access of L2
+		if(helper==1){
+			helper =0;//reset helper to the next time
+			bool a=n_way_search(&(L->Sets_array[L2_set]),L2_tag,way);
+			if (a){//hit in L2 cache
+				L->num_hit_L2+=1;
+				_n_way_raise_lru(&(L->Sets_array[L2_set]),way);
+				return 0;
+			}
+			//if a==0,we have miss in L1&L2-->we need to add both.
+			way=get_oldest_way(L->Sets_array +L2_set);
+			clear_way(L, set,way);
+			L->Sets_array[L2_set].Address_array_same_set[way].valid=true;
+			L->Sets_array[L2_set].Address_array_same_set[way].tag=L2_tag;
+			_n_way_raise_lru(&(L->Sets_array[L2_set]),way);
+			add_access(L->lower_access_cycles);//add the num cycles of the memory
+			return 0;
+			}
+		return 0;
+	}
+	
+
+int address_restore(L_Cache *L, int set, unsigned tag) {
+	int n = L->num_of_sets;
+	while(n >>= 1) tag << 1;
+	tag = (tag | set) << block_num_bit; // TODO what about addresses alligned to 4Bytes?
+	return tag;
+}
+
+void clear_way(L_Cache *L, int set, int way) {
+	Address_Data &block = L->Sets_array[set].Address_array_same_set[way];
+	if(block.valid && block.dirty) {
+		cache_writeback(L->lower_level, address_restore(L, set, block.tag)); // ignore delay
+	}
+	block.dirty = false;
+	block.valid = false;
+}
+
+
+  	int get_oldest_way(N_ways_sets *sets) {
+		int oldest_val = -1;
+		int oldest;
+		for (int i=0; i < sets->num_address_in_Mem; i++) {
+			Address_Data *block = sets->Address_array_same_set + i;
+			if(! block->valid)
+				return i;
+			if (oldest_val < block->LRU) {
+				oldest_val = block->LRU; 
+				oldest = i;
+			}
+	}
+	return oldest;
+}
+
+	
+	// mark access, most recent have LRU=0
+	void _n_way_raise_lru(N_ways_sets *sets, int way) {
+	for (int i=0; i < sets->num_address_in_Mem; i++) {
+		Address_Data *block = sets->Address_array_same_set + i;
+		if((! block->valid) || i == way)
+			continue;
+		block->LRU++;
+	}
+	Address_Data &my_block = sets->Address_array_same_set[way];
+	my_block.LRU = 0; // still not in the game if valid=false
+}
+
+
+	// return true if tag founded in cache
+	bool n_way_search(N_ways_sets *sets, unsigned tag, int &way) { // will update LRU
+	for (int i=0; i < sets->num_address_in_Mem; i++) {
+		Address_Data *block = sets->Address_array_same_set + i;
+		if(! block->valid)
+			continue;
+		if(block->tag == tag) {
+			way = i;
+			return true;
+		}
+	}
+	return false;
+}
+
+	
+	void add_access(unsigned num_cyc){
+		total_time=total_time+num_cyc;
+	}
+
+
+void cache_write(L_Cache* L, int address) { // return delay (need to add this chace acces time externally)
+	if (L == NULL) return 0;
+	unsigned tag; int set;
+	int way; bool exists;
+	
+	parse_address(address, tag, set);
+	exists = n_way_search(L->Sets_array + set, tag, way);
+
+	if(exists) {
+		L->num_hit_L++;
+	} else {
+		L->num_miss_L++;
+
+		if (write_allocate) {
+			total_time += L->lower_access_cycles;
+			cache_readback(L->lower_level, address); // fetch from L2 to L1 - do not affect L2 missrate
+
+			// allocate space:
+			way = get_oldest_way(L->Sets_array + set); 
+			clear_way(L, set, way);
+			L->Sets_array[set].Address_array_same_set[way].valid = true;
+		}
+	}
+	// write to cache
+	if ((exists || write_allocate) && ! write_through) {
+		_n_way_raise_lru(L->Sets_array + set, way);
+		L->Sets_array[set].Address_array_same_set[way].dirty = true;
+	} else {  // 
+		total_time += L->lower_access_cycles;
+		cache_write(L->lower_level, address);
+		L->Sets_array[set].Address_array_same_set[way].valid = false;
+	}
+}
+
+
+int cache_writeback(L_Cache* L, int address) {...} // same as write, but do not affect statistics
+
+
+void parse_address(unsigned &tag, unsigned &set,unsigned address,int set_num_bit,int block_num_bit){ 
+	int mask =0;
+	address=address>>block_num_bit;//get rid from off-set block-bits
+	//parse set:
+	int help_variable=set_num_bit;
+	while(help_variable){
+		mask=mask<<1;
+        mask++;
+        help_variable--;
+	}
+	set=mask & address;
+	//parse tag:
+	mask=0;
+	address=address>>set_num_bit;
+	help_variable=(32-(set_num_bit+block_num_bit));//The rest of the bits are the tag
+	while(help_variable){
+		mask=mask<<1;
+        mask++;
+        help_variable--;
+	}
+	tag=mask & address;
+};
+
+
+
+
+
+
+///////////////////////////////////////////////////////main:////////////////////////////////////////////////////////////////////////
+int main(int argc, char **argv) {
+
+	if (argc < 19) {
+		cerr << "Not enough arguments" << endl;
+		return 0;
+	}
+
+	// Get input arguments
+
+	// File
+	// Assuming it is the first argument
+	char* fileString = argv[1];
+	ifstream file(fileString); //input file stream
+	string line;
+	if (!file || !file.good()) {
+		// File doesn't exist or some other error
+		cerr << "File not found" << endl;
+		return 0;
+	}
+
+	unsigned MemCyc = 0, BSize = 0, L1Size = 0, L2Size = 0, L1Assoc = 0,
+			L2Assoc = 0, L1Cyc = 0, L2Cyc = 0, WrAlloc = 0;
+
+	for (int i = 2; i < 19; i += 2) {
+		string s(argv[i]);
+		if (s == "--mem-cyc") {
+			MemCyc = atoi(argv[i + 1]);//number cyc' to memory
+		} else if (s == "--bsize") {
+			BSize = atoi(argv[i + 1]);//block size(log)
+		} else if (s == "--l1-size") {
+			L1Size = atoi(argv[i + 1]);//cache L1Size (log)
+		} else if (s == "--l2-size") {
+			L2Size = atoi(argv[i + 1]);//cache L2Size (log)
+		} else if (s == "--l1-cyc") {
+			L1Cyc = atoi(argv[i + 1]);//L1 number cyc'
+		} else if (s == "--l2-cyc") {
+			L2Cyc = atoi(argv[i + 1]);//L2 number cyc'
+		} else if (s == "--l1-assoc") {
+			L1Assoc = atoi(argv[i + 1]);//L1 n-way(log)
+		} else if (s == "--l2-assoc") {
+			L2Assoc = atoi(argv[i + 1]);//L2 n-ways(log)
+		} else if (s == "--wr-alloc") {
+			WrAlloc = atoi(argv[i + 1]);// 0:No Write Allocate| 1: Write Allocate
+		} else {
+			cerr << "Error in arguments" << endl;
+			return 0;
+		}
+	}
+	
+	
+	
+    /////////////////////////////////////////////////////////until here all the inputs arguments are in variables //////////////////////////////
+
+
+
+
+	unsigned num_bits_set_L1;
+	unsigned num_bits_set_L2;
+	unsigned num_set_L1;      //num of sets that will be in cache L1
+	unsigned num_set_L2;      //num of sets that will be in cache L2
+	unsigned Max_block_set_L1=pow(2,L1Assoc);//num of Max blocks for each set in L1
+	unsigned Max_block_set_L2=pow(2,L2Assoc);//num of Max blocks for each set in L2
+	
+	
+	
+	//Calculate how many sets arrays will be in L1&L2
+	unsigned helper_a;
+	 
+	helper_a=(L1Size-BSize)-L1Assoc; 
+	num_set_L1=pow(2,helper_a);
+	num_bits_set_L1=log2(num_set_L1);
+	helper_a=(L2Size-BSize)-L2Assoc; 
+	num_set_L2=pow(2,helper_a);
+	num_bits_set_L2=log2(num_set_L2);
+
+    
+    L L1;
+    L1.Sets_array=new N_ways_sets[num_set_L1];
+   
+    L L2;
+    L2.Sets_array=new N_ways_sets[num_set_L2];
+
+	L1.lower_level=L2;//its an error,need to check how to compare between them.
+    
+    
+    
+    
+    
+    
+    
+    
+    
+/////////////////////////Code we received from the course staff///////////////////////////////////
+
+	while (getline(file, line)) {
+
+		stringstream ss(line);
+		string address;
+		char operation = 0; // read (R) or write (W)
+		if (!(ss >> operation >> address)) {
+			// Operation appears in an Invalid format
+			cout << "Command Format error" << endl;
+			return 0;
+		}
+
+		// DEBUG - remove this line
+		cout << "operation: " << operation;
+
+		string cutAddress = address.substr(2); // Removing the "0x" part of the address
+
+		// DEBUG - remove this line
+		cout << ", address (hex)" << cutAddress;
+
+		unsigned long int num = 0;
+		num = strtoul(cutAddress.c_str(), NULL, 16);
+		
+		// DEBUG - remove this line
+		cout << " (dec) " << num << endl;  //
+
+	}
+
+	double L1MissRate;
+	double L2MissRate;
+	double avgAccTime;
+
+	printf("L1miss=%.03f ", L1MissRate);
+	printf("L2miss=%.03f ", L2MissRate);
+	printf("AccTimeAvg=%.03f\n", avgAccTime);
+
+	return 0;
+}
