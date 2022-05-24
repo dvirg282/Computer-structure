@@ -19,7 +19,6 @@ using namespace std;
 
 bool write_through;  // TODO set in main()
 bool write_allocate;
-unsigned total_time;
 int block_num_bit;
 
 //brief-define each block in n-ways array
@@ -198,7 +197,7 @@ void cache_write(L_Cache* L, int address) { // return delay (need to add this ch
 
 		if (write_allocate) {
 			total_time += L->lower_access_cycles;
-			cache_readback(L->lower_level, address); // fetch from L2 to L1 - do not affect L2 missrate
+			cache_read(L->lower_level); // fetch from L2 to L1 - do not affect L2 missrate
 
 			// allocate space:
 			way = get_oldest_way(L->Sets_array + set); 
@@ -218,8 +217,36 @@ void cache_write(L_Cache* L, int address) { // return delay (need to add this ch
 }
 
 
-int cache_writeback(L_Cache* L, int address) {...} // same as write, but do not affect statistics
+void cache_writeback(L_Cache* L, int address) {
+	if (L == NULL) return 0;
+	unsigned tag; int set;
+	int way; bool exists;
+	
+	parse_address(address, tag, set);
+	exists = n_way_search(L->Sets_array + set, tag, way);
 
+	if(exists) {
+	} else {
+
+		if (write_allocate) {
+			cache_readback(L->lower_level, address); // fetch from L2 to L1 - do not affect L2 missrate
+
+			// allocate space:
+			way = get_oldest_way(L->Sets_array + set); 
+			clear_way(L, set, way);
+			L->Sets_array[set].Address_array_same_set[way].valid = true;
+		}
+	}
+
+	// write to cache
+	if ((exists || write_allocate) && ! write_through) {
+		_n_way_raise_lru(L->Sets_array + set, way);
+		L->Sets_array[set].Address_array_same_set[way].dirty = true;
+	} else {  
+		cache_writeback(L->lower_level, address);
+		L->Sets_array[set].Address_array_same_set[way].valid = false;
+	}
+} // same as write, but do not affect statistics
 
 void parse_address(unsigned &tag, unsigned &set,unsigned address,int set_num_bit,int block_num_bit){ 
 	int mask =0;
