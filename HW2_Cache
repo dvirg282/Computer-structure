@@ -18,7 +18,6 @@ using std::stringstream;
 using namespace std;
 
 bool write_through;  // TODO set in main()
-bool write_allocate;
 int block_num_bit;
 
 //brief-define each block in n-ways array
@@ -52,8 +51,8 @@ unsigned L1_set;
 unsigned L2_set;
 unsigned L1_tag;
 unsigned L2_tag;
+unsigned num_of_trace=0;
 
-int helper=0;//for read function
 
 
 
@@ -72,19 +71,19 @@ int helper=0;//for read function
 		return cache;
 	}
 
-
-
-	int cache_read(L_Cache* L, &helper) { 
+    //if we got R in the trace we start here
+	int cache_read(L_Cache* L) { 
 		add_access(L->access_cycles);
 		int way;
+		int helper=	L->lower_level;
 		// access of L1.
-		if(!helper){
+		if(helper){
 			bool a=n_way_search(&(L->Sets_array[L1_set]),L1_tag,way);//search in L1	
 			if(a){//we are in same set && same tag.
 				_n_way_raise_lru(&(L->Sets_array[L1_set]),way);//make sure with yoav its update the found tag to be the last one
 				return 0;
 			}
-			helper=1;//not found in L1 so we insert the new address inside the set!
+			//not found in L1 so we insert the new address inside the set!
 			L->num_miss_L1+=1;
 			way=get_oldest_way(L->Sets_array +L1_set);
 			clear_way(L, set,way);
@@ -92,11 +91,10 @@ int helper=0;//for read function
 			L->Sets_array[L1_set].Address_array_same_set[way].tag=L1_tag;
 			_n_way_raise_lru(&(L->Sets_array[L1_set]),way);
 			}
-			cache_read(&(L->lower_level),helper);//calling to L2 read
+			cache_read(&(L->lower_level));//calling to L2 read
 
 		//access of L2
-		if(helper==1){
-			helper =0;//reset helper to the next time
+		if(!helper){
 			bool a=n_way_search(&(L->Sets_array[L2_set]),L2_tag,way);
 			if (a){//hit in L2 cache
 				L->num_hit_L2+=1;
@@ -116,21 +114,21 @@ int helper=0;//for read function
 	}
 	
 
-int address_restore(L_Cache *L, int set, unsigned tag) {
-	int n = L->num_of_sets;
-	while(n >>= 1) tag << 1;
-	tag = (tag | set) << block_num_bit; // TODO what about addresses alligned to 4Bytes?
-	return tag;
-}
-
-void clear_way(L_Cache *L, int set, int way) {
-	Address_Data &block = L->Sets_array[set].Address_array_same_set[way];
-	if(block.valid && block.dirty) {
-		cache_writeback(L->lower_level, address_restore(L, set, block.tag)); // ignore delay
+	int address_restore(L_Cache *L, int set, unsigned tag) {
+		int n = L->num_of_sets;
+		while(n >>= 1) tag << 1;
+		tag = (tag | set) << block_num_bit; // TODO what about addresses alligned to 4Bytes?
+		return tag;
 	}
-	block.dirty = false;
-	block.valid = false;
-}
+
+	void clear_way(L_Cache *L, int set, int way) {
+		Address_Data &block = L->Sets_array[set].Address_array_same_set[way];
+		if(block.valid && block.dirty) {
+			cache_writeback(L->lower_level, address_restore(L, set, block.tag)); // ignore delay
+		}
+		block.dirty = false;
+		block.valid = false;
+	}
 
 
   	int get_oldest_way(N_ways_sets *sets) {
@@ -146,7 +144,7 @@ void clear_way(L_Cache *L, int set, int way) {
 			}
 	}
 	return oldest;
-}
+	}
 
 	
 	// mark access, most recent have LRU=0
@@ -159,7 +157,7 @@ void clear_way(L_Cache *L, int set, int way) {
 	}
 	Address_Data &my_block = sets->Address_array_same_set[way];
 	my_block.LRU = 0; // still not in the game if valid=false
-}
+	}
 
 
 	// return true if tag founded in cache
@@ -174,7 +172,7 @@ void clear_way(L_Cache *L, int set, int way) {
 		}
 	}
 	return false;
-}
+	}
 
 	
 	void add_access(unsigned num_cyc){
@@ -182,7 +180,7 @@ void clear_way(L_Cache *L, int set, int way) {
 	}
 
 
-void cache_write(L_Cache* L, int address) { // return delay (need to add this chace acces time externally)
+	void cache_write(L_Cache* L, int address) { // return delay (need to add this chace acces time externally)
 	if (L == NULL) return 0;
 	unsigned tag; int set;
 	int way; bool exists;
@@ -197,7 +195,7 @@ void cache_write(L_Cache* L, int address) { // return delay (need to add this ch
 
 		if (write_allocate) {
 			total_time += L->lower_access_cycles;
-			cache_read(L->lower_level); // fetch from L2 to L1 - do not affect L2 missrate
+			cache_readback(L->lower_level, address); // fetch from L2 to L1 - do not affect L2 missrate
 
 			// allocate space:
 			way = get_oldest_way(L->Sets_array + set); 
@@ -248,7 +246,9 @@ void cache_writeback(L_Cache* L, int address) {
 	}
 } // same as write, but do not affect statistics
 
-void parse_address(unsigned &tag, unsigned &set,unsigned address,int set_num_bit,int block_num_bit){ 
+
+void parse_address(unsigned address,int set_num_bit,int block_num_bit,L_Cache* L){ 
+	int helper=	L->lower_level;
 	int mask =0;
 	address=address>>block_num_bit;//get rid from off-set block-bits
 	//parse set:
@@ -258,7 +258,13 @@ void parse_address(unsigned &tag, unsigned &set,unsigned address,int set_num_bit
         mask++;
         help_variable--;
 	}
-	set=mask & address;
+	if (helper){
+	L1_set=mask & address;
+	}
+	else{
+		L2_set=mask & address;
+	}
+	
 	//parse tag:
 	mask=0;
 	address=address>>set_num_bit;
@@ -268,7 +274,12 @@ void parse_address(unsigned &tag, unsigned &set,unsigned address,int set_num_bit
         mask++;
         help_variable--;
 	}
-	tag=mask & address;
+	if (helper){
+	L1_tag=mask & address;
+	}
+	else{
+		L2_tag=mask & address;
+	}
 };
 
 
@@ -352,23 +363,17 @@ int main(int argc, char **argv) {
 	num_set_L2=pow(2,helper_a);
 	num_bits_set_L2=log2(num_set_L2);
 
-    
+    bool write_allocate=WrAlloc;//0:No Write Allocate| 1: Write Allocate
+	int block_num_bit=BSize;
     L L1;
-    L1.Sets_array=new N_ways_sets[num_set_L1];
-   
+    L1=cache_init(num_set_L1, Max_block_set_L1);
     L L2;
-    L2.Sets_array=new N_ways_sets[num_set_L2];
+    L1=cache_init(num_set_L2, Max_block_set_L2);
 
-	L1.lower_level=L2;//its an error,need to check how to compare between them.
+	L1->lower_level=L2;//its an error,need to check how to compare between them.
+       
     
-    
-    
-    
-    
-    
-    
-    
-    
+
 /////////////////////////Code we received from the course staff///////////////////////////////////
 
 	while (getline(file, line)) {
@@ -385,6 +390,7 @@ int main(int argc, char **argv) {
 		// DEBUG - remove this line
 		cout << "operation: " << operation;
 
+
 		string cutAddress = address.substr(2); // Removing the "0x" part of the address
 
 		// DEBUG - remove this line
@@ -396,6 +402,13 @@ int main(int argc, char **argv) {
 		// DEBUG - remove this line
 		cout << " (dec) " << num << endl;  //
 
+
+		
+		parse_address(num,num_bits_set_L1,BSize,&L1);
+		parse_address(num,num_bits_set_L2,BSize,&L2); 
+		num_of_trace++;//count num of lines to finish sum
+		if(operation=='R') cache_read(&L);
+		if(operation=='W') cache_write(&L,address);
 	}
 
 	double L1MissRate;
