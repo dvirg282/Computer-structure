@@ -478,11 +478,11 @@ int main(int argc, char **argv) {
 
 
 		
-		parse_address(num,num_bits_set_L1,BSize,&L1);
-		parse_address(num,num_bits_set_L2,BSize,&L2); 
+		parse_address(num,num_bits_set_L1,BSize,L1);
+		parse_address(num,num_bits_set_L2,BSize,L2); 
 		num_of_trace++;//count num of lines to finish sum
-		if(operation=='R') cache_read(&L);
-		if(operation=='W') cache_write(&L,address);
+		if(operation=='R') cache_read(L);
+		if(operation=='W') cache_write(L,address);
 	}
 
 	double L1MissRate = (double)(L1->num_miss_L) / (L1->num_miss_L + L1->num_hit_L);
