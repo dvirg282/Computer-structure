@@ -62,7 +62,7 @@ typedef struct L{
 
 
 ///////////////////////////////////////////functions:///////////////////////////////////////////////////////////////////////////////////
-
+void cache_writeback(L_Cache* L, int address);
 
 L_Cache *cache_init(int num_of_sets, int num_of_ways) {
     L_Cache *cache = new L_Cache();  // assign zero to all fields 
@@ -492,9 +492,9 @@ int main(int argc, char **argv) {
 	printf("L1miss=%.03f ", L1MissRate);
 	printf("L2miss=%.03f ", L2MissRate);
 	printf("AccTimeAvg=%.03f\n", avgAccTime);
-	
-	cache_destroy(L2);
-    	cache_destroy(L1);
+
+    cache_destroy(L2);
+    cache_destroy(L1);
 
 	return 0;
 }
