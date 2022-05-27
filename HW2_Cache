@@ -161,7 +161,7 @@ int get_oldest_way(N_ways_sets *sets) {
         Address_Data *block = sets->Address_array_same_set + i;
         if(! block->valid)
             {cout << " oway: " << i << " from: " << sets-> num_address_in_Mem << endl; return i; }
-        if (oldest_val < block->LRU) {
+        if (oldest_val < (int) block->LRU) {
             oldest_val = block->LRU; 
             oldest = i;
         }
