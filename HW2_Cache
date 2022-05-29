@@ -150,13 +150,12 @@ int get_oldest_way(N_ways_sets *sets) {
     for (int i=0; i < sets->num_address_in_Mem; i++) {
         Address_Data *block = sets->Address_array_same_set + i;
         if(! block->valid)
-            {cout << " oway: " << i << " from: " << sets-> num_address_in_Mem << endl; return i; }
+            return i;
         if (oldest_val < (int) block->LRU) {
             oldest_val = block->LRU; 
             oldest = i;
         }
     }
-    cout << " oway: " << oldest << endl;
     return oldest;
 }
 
@@ -182,7 +181,6 @@ bool n_way_search(N_ways_sets *sets, unsigned tag, int &way) { // will update LR
             continue;
         if(block->tag == tag) {
             way = i;
-            cout << "selected way: " << way << endl;
             return true;
         }
     }
@@ -192,9 +190,6 @@ bool n_way_search(N_ways_sets *sets, unsigned tag, int &way) { // will update LR
 void clear_way(L_Cache *L, int set, int way) {
     Address_Data &block = L->Sets_array[set].Address_array_same_set[way];
     
-
-    cout << "clear set: " << set << " from: " << L->num_of_sets << endl;
-
     if(block.valid) {
         // enforce inclusiveness
         if(L->upper_level) {
@@ -207,7 +202,6 @@ void clear_way(L_Cache *L, int set, int way) {
         }
 
         if(block.dirty) {
-            cout << "wb: " << address_restore(L, set, block.tag) << endl;
             cache_writeback(L->lower_level, address_restore(L, set, block.tag)); // ignore delay
         }
     }
@@ -248,13 +242,11 @@ int cache_read(L_Cache* L) {
         bool a=n_way_search(&(L->Sets_array[L1_set]),L1_tag,way);//search in L1	
         if(a){//we are in same set && same tag.
             L->num_hit_L+=1;
-            cout << " L1: hit (r)" << endl;
             n_way_raise_lru(&(L->Sets_array[L1_set]),way);//make sure with yoav its update the found tag to be the last one
             return 0;
         }
         //not found in L1 so we insert the new address inside the set!
         L->num_miss_L+=1;
-        cout << " L1: miss (r)" << endl;
         way=get_oldest_way(L->Sets_array +L1_set);
         clear_way(L, L1_set, way);
         L->Sets_array[L1_set].Address_array_same_set[way].valid=true;
@@ -268,12 +260,10 @@ int cache_read(L_Cache* L) {
         bool a=n_way_search(&(L->Sets_array[L2_set]),L2_tag,way);
         if (a){//hit in L2 cache
             L->num_hit_L+=1;
-            cout << " L2: hit (r)" << endl;
             n_way_raise_lru(&(L->Sets_array[L2_set]),way);
             return 0;
         }
         L->num_miss_L+=1;
-        cout << " L2: miss (r)" << endl;
         //if a==0,we have miss in L1&L2-->we need to add both.
         way=get_oldest_way(L->Sets_array +L2_set);
         clear_way(L, L2_set, way);
@@ -339,10 +329,8 @@ void cache_write(L_Cache* L, int address) { // return delay (no need to add this
 
     if(exists) {
         L->num_hit_L++;
-        cout << " Write Hit " << (L->lower_access_cycles ? "L1" : "L2") << " (w)" << endl;
     } else {
         L->num_miss_L++;
-        cout << " Write Miss " << (L->lower_access_cycles ? "L1" : "L2") << " (w)" << endl;
 
         if (write_allocate) {
             cache_read(L->lower_level); // TODO read or back
@@ -362,7 +350,6 @@ void cache_write(L_Cache* L, int address) { // return delay (no need to add this
         // write_through:
         total_time += L->lower_access_cycles;
         cache_write(L->lower_level, address);
-        L->Sets_array[set].Address_array_same_set[way].valid = false;
     }
 }
 
@@ -396,7 +383,6 @@ void cache_writeback(L_Cache* L, int address) { // same as write, but do not aff
 		L->Sets_array[set].Address_array_same_set[way].dirty = true;
 	} else {  
 		cache_writeback(L->lower_level, address);
-		L->Sets_array[set].Address_array_same_set[way].valid = false;
 	}
 } 
 
@@ -499,9 +485,8 @@ int main(int argc, char **argv) {
 
 /////////////////////////Code we received from the course staff///////////////////////////////////
 
-	cout << "max way: " << Max_block_set_L1 << " " << Max_block_set_L2 << endl; // debug
-	cout << "max set: " << num_set_L1 << " " << num_set_L2 << endl;
-	 cache_print_state(L1);
+	//cout << "max way: " << Max_block_set_L1 << " " << Max_block_set_L2 << endl; // debug
+	//cout << "max set: " << num_set_L1 << " " << num_set_L2 << endl;
 
 	while (getline(file, line)) {
 
@@ -515,7 +500,7 @@ int main(int argc, char **argv) {
 		}
 
 		// DEBUG - remove this line
-		cout << "operation: " << operation << endl;
+		//cout << "operation: " << operation << endl;
 
 
 		string cutAddress = address.substr(2); // Removing the "0x" part of the address
@@ -534,23 +519,15 @@ int main(int argc, char **argv) {
 		parse_address(num,num_bits_set_L1,L1);
 		parse_address(num,num_bits_set_L2,L2); 
 		num_of_trace++;//count num of lines to finish sum
-		try {
-                printf(" address: %d setL1: %d\n", (int)num, (int)L1_set);
 		if(operation=='r') cache_read(L1);
 		if(operation=='w') cache_write(L1,(int)num);
-		cout  << " l1-miss: " << L1->num_miss_L << endl;
-                } catch (...) {
-		cache_print_state(L1);
-		cache_print_state(L2);
-		throw;
-		}
+
                 
 	}
 
 	double L1MissRate = (double)(L1->num_miss_L) / (L1->num_miss_L + L1->num_hit_L);
 	double L2MissRate = (double)(L2->num_miss_L) / (L2->num_miss_L + L2->num_hit_L);
 	double avgAccTime = (double)(total_time) / num_of_trace;
-	cout << "total:  " << total_time << endl;  //
 
 	printf("L1miss=%.03f ", L1MissRate);
 	printf("L2miss=%.03f ", L2MissRate);
