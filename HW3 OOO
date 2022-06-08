@@ -1,0 +1,91 @@
+
+#include <stdio.h>
+#include <iostream>
+#include "dflow_calc.h"
+#include <iostream>
+#include <sstream>
+#include <math.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <cstdlib>
+
+using namespace std;
+
+//int Max_depth=0;
+int Max_latency=0;
+
+typedef struct {
+    unsigned latency_Instruction; //will hold the time that take to the instruction to operate
+    unsigned latency_total_until_here=0; //hold the total latency without the current command 
+    int dependency_Operand_A=-1; //Will hold the number of an instruction on which it depends
+    int dependency_Operand_B=-1; //Will hold the number of an instruction on which it depends
+}Singal_Instruction;
+
+Singal_Instruction *Instruction; //We will initialize the array with the number of commands that are in the trace  
+
+
+
+
+ProgCtx analyzeProg(const unsigned int opsLatency[], const InstInfo progTrace[], unsigned int numOfInsts) {
+    Instruction= new Singal_Instruction[numOfInsts];//initialize an array that contain a data for each instruction
+    
+    for(int i=0;i<numOfInsts;i++){
+        Instruction[i].latency_Instruction=opsLatency[progTrace[i].dstIdx];//insert the latency to the relevant instruction
+    //checking for dependency for src1Idx
+        for(int j=i-1;j>=0;j--){
+               if(i==0) break;
+               if(progTrace[i].src1Idx==progTrace[j].dstIdx) {//we have RAW!
+                   Instruction[i].dependency_Operand_A=j;
+                   Instruction[i].latency_total_until_here=Instruction[j].latency_total_until_here+Instruction[j].latency_Instruction;//calculate the time of dependency
+                   break;
+               }
+        }
+    //checking for dependency for src2Idx
+        for(int j=i-1;j>=0;j--){
+               if(i==0) break;
+               if(progTrace[i].src2Idx==progTrace[j].dstIdx) {//we have RAW!
+                    Instruction[i].dependency_Operand_B=j;
+                    int temp=Instruction[j].latency_total_until_here+Instruction[j].latency_Instruction;
+                    if(temp> Instruction[i].latency_total_until_here){
+                        Instruction[i].latency_total_until_here=temp;
+                   }
+                   break;
+               }
+        
+        }
+        int temp= Instruction[i].latency_total_until_here+Instruction[i].latency_Instruction;
+        if (temp>Max_latency){
+            Max_latency=temp;
+        }
+    }
+    
+    return PROG_CTX_NULL;
+}
+
+void freeProgCtx(ProgCtx ctx) {
+}
+
+int getInstDepth(ProgCtx ctx, unsigned int theInst) {
+    return -1;
+}
+
+int getInstDeps(ProgCtx ctx, unsigned int theInst, int *src1DepInst, int *src2DepInst) {
+    return -1;
+}
+
+int getProgDepth(ProgCtx ctx) {
+    return 0;
+}
+
+
+
+
+
+
+int main()
+{
+
+
+
+    return 0;
+}
