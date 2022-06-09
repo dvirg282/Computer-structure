@@ -1,4 +1,3 @@
-
 #include <stdio.h>
 #include <iostream>
 #include "dflow_calc.h"
@@ -13,6 +12,7 @@ using namespace std;
 
 //int Max_depth=0;
 int Max_latency=0;
+int num_of_instruction;
 
 typedef struct {
     unsigned latency_Instruction; //will hold the time that take to the instruction to operate
@@ -28,7 +28,7 @@ Singal_Instruction *Instruction; //We will initialize the array with the number 
 
 ProgCtx analyzeProg(const unsigned int opsLatency[], const InstInfo progTrace[], unsigned int numOfInsts) {
     Instruction= new Singal_Instruction[numOfInsts];//initialize an array that contain a data for each instruction
-    
+    num_of_instruction=numOfInsts;
     for(int i=0;i<numOfInsts;i++){
         Instruction[i].latency_Instruction=opsLatency[progTrace[i].dstIdx];//insert the latency to the relevant instruction
     //checking for dependency for src1Idx
@@ -66,26 +66,24 @@ void freeProgCtx(ProgCtx ctx) {
 }
 
 int getInstDepth(ProgCtx ctx, unsigned int theInst) {
+    if ((theInst>=0)&&(theInst<=num_of_instruction)){
+        return Instruction[theInst].latency_total_until_here;
+    }
     return -1;
 }
 
 int getInstDeps(ProgCtx ctx, unsigned int theInst, int *src1DepInst, int *src2DepInst) {
+    if ((theInst>=0)&&(theInst<=num_of_instruction)){
+        src1DepInst=Instruction[theInst].dependency_Operand_A;
+        src2DepInst=Instruction[theInst].dependency_Operand_B;
+        return 1;
+    }
     return -1;
 }
 
 int getProgDepth(ProgCtx ctx) {
-    return 0;
+    return Max_latency;
 }
 
 
 
-
-
-
-int main()
-{
-
-
-
-    return 0;
-}
