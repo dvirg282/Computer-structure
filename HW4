@@ -1,3 +1,4 @@
+
 #include "core_api.h"
 #include "sim_api.h"
 
@@ -23,7 +24,6 @@ typedef struct thread{
 typedef struct program_init{
     int thread_on_working=0;
     int num_of_cycles=0;
-    int num_of_threads=SIM_GetThreadsNum();
     int penalty_switch_cycles=0;
     int Load_latency=SIM_GetLoadLat();
     int Store_latency=SIM_GetStoreLat();
@@ -34,37 +34,67 @@ typedef struct program_init{
 //initialization data structure of MT and Fine_grained
 program_init* FineGrained= new program_init();
 program_init* blockdMT= new program_init();
-int thread=0;
+int num_of_threads=SIM_GetThreadsNum();
 
 void initialization_tcontext_to_Zero(program_init* curr_prog){
-    for (int i=0;i<curr_prog->num_of_threads;i++){
+    for (int i=0;i<num_of_threads;i++){
         for(int j=0;j<REGS_COUNT;j++){
             curr_prog->threads[i].register_thread.reg[j]=0;
         }
     }
 }
 
-void thread_blockedMT_run(){
-    while(threads_in_halted!=num_of_threads){//each iteration in a loop = clock cycle
-        thread=get_thread();
-        if (thread==IDLE){
-            //need to stop all the thread until someone will be ready..to do
+void threads_blockedMT_run(){
+    while(blockdMT->threads_in_halted!=num_of_threads){//each iteration in a loop = clock cycle
+        int thread=get_thread();//tell you if current thread is: 1)IDlE 2)stay with same thread 3)finish(all halted) 4)move to new thread
+        if (thread==IDLE){//first case
+            blockdMT->num_of_cycles++;
+            for (int i=0;i<num_of_threads;i++){
+                if(blockdMT->threads[i].busy){
+                    blockdMT->threads[i].busy--;
+                }
+            }
+            continue;
         }
-        if()
+        if(thread==curr_prog->thread_on_working){//second case
+            blockdMT->num_of_cycles++;
+            curr_instruction(){
+                //to do-function that get the next instruction and And changes things accordingly
+            continue;
+            }
+        }
+        if(thread>=0){//fourth case-switch thread!
+            blockdMT->thread_on_working=thread;
+            for(int i=0;i<blockdMT->penalty_switch_cycles;i++){
+                blockdMT->num_of_cycles++;
+                for (int j=0;j<num_of_threads;j++){
+                    if(blockdMT->threads[j].busy){
+                        blockdMT->threads[j].busy--;
+                    }
+                }
+            }
+            curr_instruction(){
+                //to do-function that get the next instruction and And changes things accordingly
+            }
+        }        
+        if (thread==All_thread_halted){//third case
+            break;
+        }
+        
+        
     }
-    
 }
+
 
 int get_thread(){
     int threads_that_halted=0;
     int threads_that_busy=0;
     int current_thread=blockdMT->thread_on_working;
-    int num_thread_of_prog=blockdMT->num_of_threads;
-    while(thread_that_halted<=num_thread_of_prog){
+    while(thread_that_halted<=num_of_threads){
         if(blockdMT->threads[current_thread].halted==1){
              threads_that_halted++;
              current_thread++;
-             current_thread=current_thread%num_thread_of_prog;
+             current_thread=current_thread%num_of_threads;
              continue;
         }
         if(blockdMT->threads[current_thread].busy==0){
@@ -72,8 +102,8 @@ int get_thread(){
         }
         threads_that_busy++;
         current_thread++;
-        current_thread=current_thread%num_thread_of_prog;
-        if (threads_that_busy==num_thread_of_prog){
+        current_thread=current_thread%num_of_threads;
+        if (threads_that_busy==num_of_threads){
             return IDLE;
         }
     }
@@ -84,10 +114,12 @@ int get_thread(){
 void CORE_BlockedMT() {
   initialization_tcontext_to_Zero(blockdMT); 
   blockdMT->penalty_switch_cycles=SIM_GetSwitchCycles();//in blocked_MT we insert the value from configuration system
-  thread_blockedMT_run();  
+  threads_blockedMT_run();  
 }
 
 void CORE_FinegrainedMT() {
+    initialization_tcontext_to_Zero(FineGrained); 
+    blockdMT_run();
 }
 
 double CORE_BlockedMT_CPI(){
