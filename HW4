@@ -1,0 +1,105 @@
+#include "core_api.h"
+#include "sim_api.h"
+
+#include <stdio.h>
+#include <iostream>
+#include <sstream>
+#include <math.h>
+#include <stdlib.h>
+#include <cstdlib>
+
+using namespace std
+#define IDLE -1
+#define All_thread_halted -2
+
+// thread initialization 
+typedef struct thread{
+    tcontext register_thread;
+    bool halted=0;// if halted=1 we finish to brings instructions to this thread
+    int busy=0;//if busy isnt 0 we pass this thread
+}therad_data;
+
+//program initialization by parameters
+typedef struct program_init{
+    int thread_on_working=0;
+    int num_of_cycles=0;
+    int num_of_threads=SIM_GetThreadsNum();
+    int penalty_switch_cycles=0;
+    int Load_latency=SIM_GetLoadLat();
+    int Store_latency=SIM_GetStoreLat();
+    therad_data threads[SIM_GetThreadsNum()];
+    int threads_in_halted=0;
+}program_init;
+
+//initialization data structure of MT and Fine_grained
+program_init* FineGrained= new program_init();
+program_init* blockdMT= new program_init();
+int thread=0;
+
+void initialization_tcontext_to_Zero(program_init* curr_prog){
+    for (int i=0;i<curr_prog->num_of_threads;i++){
+        for(int j=0;j<REGS_COUNT;j++){
+            curr_prog->threads[i].register_thread.reg[j]=0;
+        }
+    }
+}
+
+void thread_blockedMT_run(){
+    while(threads_in_halted!=num_of_threads){//each iteration in a loop = clock cycle
+        thread=get_thread();
+        if (thread==IDLE){
+            //need to stop all the thread until someone will be ready..to do
+        }
+        if()
+    }
+    
+}
+
+int get_thread(){
+    int threads_that_halted=0;
+    int threads_that_busy=0;
+    int current_thread=blockdMT->thread_on_working;
+    int num_thread_of_prog=blockdMT->num_of_threads;
+    while(thread_that_halted<=num_thread_of_prog){
+        if(blockdMT->threads[current_thread].halted==1){
+             threads_that_halted++;
+             current_thread++;
+             current_thread=current_thread%num_thread_of_prog;
+             continue;
+        }
+        if(blockdMT->threads[current_thread].busy==0){
+            return current_thread;
+        }
+        threads_that_busy++;
+        current_thread++;
+        current_thread=current_thread%num_thread_of_prog;
+        if (threads_that_busy==num_thread_of_prog){
+            return IDLE;
+        }
+    }
+    return All_thread_halted;
+}
+
+
+void CORE_BlockedMT() {
+  initialization_tcontext_to_Zero(blockdMT); 
+  blockdMT->penalty_switch_cycles=SIM_GetSwitchCycles();//in blocked_MT we insert the value from configuration system
+  thread_blockedMT_run();  
+}
+
+void CORE_FinegrainedMT() {
+}
+
+double CORE_BlockedMT_CPI(){
+	return 0;
+}
+
+double CORE_FinegrainedMT_CPI(){
+	return 0;
+}
+
+void CORE_BlockedMT_CTX(tcontext* context, int threadid) {
+}
+
+void CORE_FinegrainedMT_CTX(tcontext* context, int threadid) {
+}
