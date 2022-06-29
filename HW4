@@ -1,4 +1,3 @@
-
 #include "core_api.h"
 #include "sim_api.h"
 #include <stdio.h>
@@ -7,52 +6,85 @@
 #include <math.h>
 #include <stdlib.h>
 #include <cstdlib>
-using namespace std
+using namespace std;
 
 #define IDLE -1
 #define AllThreadHalted -2
 #define FgFirstThread 0
 
+#define INSTRUCTION_STEP 1
+
 // thread initialization 
-typedef struct thread{
+typedef struct thread_data{
     tcontext register_thread;
-    bool halted=0;// if halted=1 we finish to brings instructions to this thread
-    int busy=0;//if busy isnt 0 we pass this thread
+    uint32_t pc; // init to zero always ?
+    bool halted;// if halted=1 we finish to brings instructions to this thread
+    int busy;//if busy isnt 0 we pass this thread
+
+    thread_data() : halted(false), busy(0), pc(0), register_thread() { } 
+
 }therad_data;
 
 //program initialization by parameters
 typedef struct program_init{
-    int thread_on_working=0;
-    int num_of_cycles=0;
-    int penalty_switch_cycles=0;
-    int Load_latency=SIM_GetLoadLat();
-    int Store_latency=SIM_GetStoreLat();
-    therad_data threads[SIM_GetThreadsNum()];
-    int threads_in_halted=0;
-    int valid=0;
+    int thread_on_working;
+    int num_of_cycles;
+    int num_of_instructions;
+    int penalty_switch_cycles;
+    int Load_latency;
+    int Store_latency;
+    therad_data *threads;
+    int threads_in_halted;
+    int valid;
+
+    program_init() : thread_on_working(0), num_of_cycles(0), num_of_instructions(0), penalty_switch_cycles(0), threads_in_halted(0), valid(0), 
+                     Load_latency(SIM_GetLoadLat()), Store_latency(SIM_GetStoreLat()) {
+        threads = new thread_data[SIM_GetThreadsNum()]();
+    }
 }program_init;
 
 //initialization data structure of MT and Fine_grained
-program_init* FineGrained= new program_init();
-program_init* blockdMT= new program_init();
-int num_of_threads=SIM_GetThreadsNum();
-
-//initialization the regs in tcontext to zero;
-void initialization_tcontext_to_Zero(program_init* curr_prog){
-    for (int i=0;i<num_of_threads;i++){
-        for(int j=0;j<REGS_COUNT;j++){
-            curr_prog->threads[i].register_thread.reg[j]=0;
-        }
-    }
-}
+program_init* FineGrained;// = new program_init();
+program_init* blockdMT;// = new program_init();
+int num_of_threads;// = SIM_GetThreadsNum();
 
 ///////////////////////BLOCKD_MT://///////////////////////////////////////////////////////////////////////////////////////////////////////
 
+void run_cmd(int tid, bool is_fine);
+
+//get the thread that available 
+int get_thread_MT(){
+    int threads_that_halted=0;
+    int threads_that_busy=0;
+    int current_thread=blockdMT->thread_on_working;
+
+    while(threads_that_halted + threads_that_busy < num_of_threads){
+        if(blockdMT->threads[current_thread].halted==1){ // skip to next one
+             threads_that_halted++;
+             current_thread++;
+             current_thread = current_thread % num_of_threads;
+             continue;
+        }
+        if(blockdMT->threads[current_thread].busy==0){ // stay in same thread
+            return current_thread;
+        }
+        threads_that_busy++;//if we are here,our thread is busy -> skip to next one
+        current_thread++;
+        current_thread=current_thread%num_of_threads;
+    }
+    if(threads_that_halted == num_of_threads)
+        return AllThreadHalted;
+    return IDLE;
+}
 
 //blocked MT start to run here!
 void threads_blockedMT_run(){
     while(1){//each iteration in a loop = clock cycle
         int thread=get_thread_MT();//tell you if current we are in: 1)IDlE 2)stay with same thread 3)finish(all halted) 4)replacement thread
+
+        if (thread==AllThreadHalted){//third case
+            break;
+        }
         if (thread==IDLE){//first case
             blockdMT->num_of_cycles++;
             for (int i=0;i<num_of_threads;i++){
@@ -60,17 +92,19 @@ void threads_blockedMT_run(){
                     blockdMT->threads[i].busy--;
                 }
             }
-            continue;
         }
-        if(thread==blockdMT->thread_on_working){//second case
+        else if(thread==blockdMT->thread_on_working){//second case
             blockdMT->num_of_cycles++;
-            curr_instruction(){
-                //to do-function that get the next instruction 
-            continue;
+            for (int i=0;i<num_of_threads;i++){
+                if(blockdMT->threads[i].busy){
+                    blockdMT->threads[i].busy--;
+                }
             }
+            run_cmd(thread, false);
         }
-        if(thread>=0){//fourth case-switch thread!
-            blockdMT->thread_on_working=thread;
+        else {//fourth case-switch thread!
+            blockdMT->thread_on_working=thread; 
+            // TODO inspect how I treat penalty (sum or max with busy)
             for(int i=0;i<blockdMT->penalty_switch_cycles;i++){
                 blockdMT->num_of_cycles++;
                 for (int j=0;j<num_of_threads;j++){
@@ -79,70 +113,21 @@ void threads_blockedMT_run(){
                     }
                 }
             }
-            curr_instruction();
+            // after penalty, this cycle
+            blockdMT->num_of_cycles++;
+            for (int i=0;i<num_of_threads;i++){
+                if(blockdMT->threads[i].busy){
+                    blockdMT->threads[i].busy--;
+                }
+            }
+            run_cmd(thread, false);
         }        
-        if (thread==AllThreadHalted){//third case
-            break;
-        }
     }
 }
 
-//get the thread that available 
-int get_thread_MT(){
-    int threads_that_halted=0;
-    int threads_that_busy=0;
-    int current_thread=blockdMT->thread_on_working;
-    while(thread_that_halted<=num_of_threads){
-        if(blockdMT->threads[current_thread].halted==1){
-             threads_that_halted++;
-             current_thread++;
-             current_thread=current_thread%num_of_threads;
-             continue;
-        }
-        if(blockdMT->threads[current_thread].busy==0){
-            return current_thread;
-        }
-        threads_that_busy++;//if we are here,our thread is busy
-        current_thread++;
-        current_thread=current_thread%num_of_threads;
-        if (threads_that_busy==num_of_threads){//if all the threads are busy-its halted!
-            return IDLE;
-        }
-    }
-    return AllThreadHalted;
-}
 
 
 //////////////////Fine_Grained_MT/////////////////////////////////////////////////////////////////////////////
-
-
-//FG start to run here!
-void CORE_FinegrainedMT(){
-    while(1){//each iteration in a loop = clock cycle
-        int thread=get_thread_FG();//tell you if current we are in: 1)IDlE 2)replacement thread 3)finish(all halted) 
-        if (thread==IDLE){//first case
-            FineGrained->num_of_cycles++;
-            for (int i=0;i<num_of_threads;i++){
-                if(FineGrained->threads[i].busy){
-                    FineGrained->threads[i].busy--;
-                }
-            }
-            continue;
-        }
-        if(thread>=0){//second case
-            FineGrained->num_of_cycles++;
-            curr_instruction(){
-                //to do-function that get the next instruction 
-            continue;
-            }
-        }
-        if (thread==All_thread_halted){//third case
-            break;
-        }
-    }
-}
-
-
 
 //get the thread that available 
 int get_thread_FG(){
@@ -153,7 +138,7 @@ int get_thread_FG(){
         return FgFirstThread;
     }
     int current_thread=(FineGrained->thread_on_working)+1;
-    while(thread_that_halted<=num_of_threads){
+    while(threads_that_halted + threads_that_busy < num_of_threads){
         if(FineGrained->threads[current_thread].halted==1){
              threads_that_halted++;
              current_thread++;
@@ -166,39 +151,123 @@ int get_thread_FG(){
         threads_that_busy++;//if we are here,current_thread is busy
         current_thread++;
         current_thread=current_thread%num_of_threads;
-        if (threads_that_busy==num_of_threads){//if all the threads are busy-its halted!
-            return IDLE;
+    }
+    if(threads_that_halted == num_of_threads)
+        return AllThreadHalted;
+    return IDLE;
+}
+
+//FG start to run here!
+void FineGrained_run(){
+    while(1){//each iteration in a loop = clock cycle
+        int thread=get_thread_FG();//tell you if current we are in: 1)IDlE 2)replacement thread 3)finish(all halted) 
+        if (thread==AllThreadHalted){//third case
+            break;
+        }
+
+        FineGrained->num_of_cycles++;
+        for (int i=0;i<num_of_threads;i++){
+            if(FineGrained->threads[i].busy){
+                FineGrained->threads[i].busy--;
+            }
+        }
+        if (thread==IDLE){//first case
+            continue;
+        }
+        else {//second case
+            run_cmd(thread, true);
         }
     }
-    return AllThreadHalted;
-}    
+}
+
+
+
     
     
+
+//////////////////////////////////////////////////////////////////////////////////////////////////////////
+// -- Run Command --
+
+void run_cmd(int tid, bool is_fine) {
+    program_init *program = is_fine ? FineGrained : blockdMT;
+    thread_data  *th = &(program->threads[tid]);
+    int *regs = th->register_thread.reg;
+    int &busy = th->busy;
+
+    Instruction cmd;
+    int val1, val2; // imm or reg[src2]
+
+    // fetch & decode
+    SIM_MemInstRead(th->pc, &cmd, tid);
+    th->pc += INSTRUCTION_STEP;
+
+    if (cmd.opcode == CMD_SUBI || cmd.opcode == CMD_ADDI)
+        cmd.isSrc2Imm = true; // Ensure input is as expected
+    
+    // rest of pipe 
+    val2 = (cmd.opcode && cmd.isSrc2Imm) ? cmd.src2_index_imm : regs[cmd.src2_index_imm];  // opcode check to secure regs[] acccess
+    val1 =  cmd.opcode ? regs[cmd.src1_index] : 0;
+
+    switch(cmd.opcode) {
+        case CMD_NOP: 
+            break;
+        case CMD_SUBI:
+        case CMD_SUB:
+            val2 = -val2;
+        case CMD_ADDI:
+        case CMD_ADD:
+            regs[cmd.dst_index] = val1 + val2;
+            break;
+        case CMD_LOAD:
+            SIM_MemDataRead(val1 + val2, regs + cmd.dst_index); 
+            busy = program->Load_latency;
+            break;
+        case CMD_STORE:
+            SIM_MemDataWrite(regs[cmd.dst_index] + val2, val1);
+            busy = program->Store_latency;
+            break;
+        case CMD_HALT:
+            th->halted = true;
+            break;
+    }
+
+    program->num_of_instructions++;
+}
 
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////
 
+// assume sim_memreset before
 void CORE_BlockedMT() {
-  initialization_tcontext_to_Zero(blockdMT); 
-  blockdMT->penalty_switch_cycles=SIM_GetSwitchCycles();//in blocked_MT we insert the value from configuration system
-  threads_blockedMT_run();  
+    blockdMT = new program_init();
+    num_of_threads = SIM_GetThreadsNum();
+    blockdMT->penalty_switch_cycles=SIM_GetSwitchCycles();//in blocked_MT we insert the value from configuration system
+    threads_blockedMT_run();  
 }
 
 void CORE_FinegrainedMT() {
-    initialization_tcontext_to_Zero(FineGrained); 
+    FineGrained = new program_init();
+    num_of_threads = SIM_GetThreadsNum();
     FineGrained_run();
 }
 
 double CORE_BlockedMT_CPI(){
-	return 0;
+    if(!blockdMT->num_of_cycles) return -1;
+    if(!blockdMT->num_of_instructions) return -2; // TODO inf & nan? 
+	return (double)blockdMT->num_of_cycles / (double)blockdMT->num_of_instructions; // TODO: check penalty is taken into account correctly
 }
 
 double CORE_FinegrainedMT_CPI(){
-	return 0;
+    if(!FineGrained->num_of_cycles) return -1;
+    if(!FineGrained->num_of_instructions) return -2; // TODO inf & nan?
+	return (double)FineGrained->num_of_cycles / (double)FineGrained->num_of_instructions; 
 }
 
 void CORE_BlockedMT_CTX(tcontext* context, int threadid) {
+    context[threadid] = blockdMT->threads[threadid].register_thread;
 }
 
 void CORE_FinegrainedMT_CTX(tcontext* context, int threadid) {
+    context[threadid] = FineGrained->threads[threadid].register_thread;
 }
+
