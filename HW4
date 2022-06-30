@@ -177,6 +177,7 @@ void FineGrained_run(){
             continue;
         }
         else {//second case
+            FineGrained->thread_on_working=thread;
             run_cmd(thread, true);
         }
     }
